@@ -1,9 +1,8 @@
-const { adams } = require("../Ibrahim/adams");
+const { adams, cm } = require("../Ibrahim/adams");
 const { sendInteractiveMessage } = require('gifted-btns');
 const moment = require("moment-timezone");
 const s = require(__dirname + "/../config");
 const axios = require("axios");
-const { cm } = require(__dirname + "/../Ibrahim/adams"); // Imported at the top for speed
 
 const readMore = String.fromCharCode(8206).repeat(4000); 
 const PREFIX = s.PREFIX;
@@ -28,14 +27,15 @@ const {
 } = s;
 
 // Category mappings for the interactive menu
+// This groups multiple internal script categories into beautiful parent menus
 const categoryMap = {
     "AI": { title: "🤖 AI MENU", keys: ["AI", "TTS", "NEWS"] },
     "SPORTS": { title: "⚽ SPORTS MENU", keys: ["FOOTBALL", "GAMES"] },
-    "DOWNLOAD": { title: "📥 DOWNLOAD MENU", keys: ["NEWS", "SEARCH", "IMAGES", "DOWNLOAD"] },
+    "DOWNLOAD": { title: "📥 DOWNLOAD MENU", keys: ["NEWS", "SEARCH", "IMAGES", "DOWNLOAD", "MEDIA"] },
     "HEROKU": { title: "🛠️ HEROKU MENU", keys: ["CONTROL", "STICKCMD", "TOOLS"] },
-    "CONVERSATION": { title: "💬 CONVERSATION MENU", keys: ["CONVERSION", "LOGO", "MEDIA", "WEEB", "SCREENSHOTS", "IMG", "AUDIO-EDIT", "MPESA"] },
+    "CONVERSATION": { title: "💬 CONVERSATION MENU", keys: ["CONVERSION", "LOGO", "WEEB", "SCREENSHOTS", "IMG", "AUDIO-EDIT", "MPESA"] },
     "FUN": { title: "😂 FUN MENU", keys: ["HENTAI", "FUN", "REACTION"] },
-    "GENERAL": { title: "🌍 GENERAL MENU", keys: ["GENERAL", "MODS", "UTILITY", "MEDIA", "TRADE"] },
+    "GENERAL": { title: "🌍 GENERAL MENU", keys: ["GENERAL", "MODS", "UTILITY", "TRADE"] },
     "GROUP": { title: "👨‍👨‍👦‍👦 GROUP MENU", keys: ["GROUP"] },
     "BOT_INFO": { title: "💻 BOT_INFO MENU", keys: ["GITHUB", "USER", "PAIR", "NEW"] },
     "ADULT": { title: "🔞 ADULT MENU", keys: ["XVIDEO", "NSFW"] }
@@ -50,18 +50,16 @@ const randomMedia = () => {
     return url.startsWith('http') ? url : null;
 };
 
-// 2. GitHub Stats Cache (Prevents network delay on every .menu call)
+// 2. GitHub Stats Cache
 let cachedStats = null;
 let lastStatFetch = 0;
 const fetchGitHubStats = async () => {
-    if (cachedStats && (Date.now() - lastStatFetch < 3600000)) return cachedStats; // 1 hour cache
+    if (cachedStats && (Date.now() - lastStatFetch < 3600000)) return cachedStats; 
     try {
         const response = await axios.get(`https://api.github.com/repos/Bwmxmd254/BWM-XMD-GO`, {
             headers: { 'User-Agent': 'BWM-XMD-BOT' }
         });
-        const forks = response.data.forks_count || 0;
-        const stars = response.data.stargazers_count || 0;
-        cachedStats = (forks * 2) + (stars * 2);
+        cachedStats = (response.data.forks_count * 2) + (response.data.stargazers_count * 2);
         lastStatFetch = Date.now();
         return cachedStats;
     } catch (error) {
@@ -69,27 +67,10 @@ const fetchGitHubStats = async () => {
     }
 };
 
-// 3. Command Menu Cache (Prevents recalculating the command lists on every tap)
-const menuCache = {};
-function getCategoryMenu(catKey) {
-    if (menuCache[catKey]) return menuCache[catKey]; // O(1) Instant Return
-    
-    const categoryData = categoryMap[catKey];
-    let commands = [];
-    cm.forEach((com) => {
-        if (categoryData.keys.includes(com.categorie.toUpperCase())) {
-            commands.push(`• ${PREFIX}${com.nomCom}`);
-        }
-    });
-
-    menuCache[catKey] = `📋 *${categoryData.title}*\n\n${commands.length > 0 ? commands.join('\n') : 'No commands available.'}\n${FOOTER}`;
-    return menuCache[catKey];
-}
-
 // ==========================================
-// 1. MAIN MENU COMMAND (Instant Load)
+// 1. MAIN MENU COMMAND (Interactive List)
 // ==========================================
-adams({ nomCom: "menu", aliases: ["help", "botmenu"], categorie: "General" }, async (dest, zk, commandeOptions) => {
+adams({ nomCom: "menu", aliases: ["botmenu"], categorie: "General" }, async (dest, zk, commandeOptions) => {
     const contactName = commandeOptions?.ms?.pushName || "Unknown Contact";
     const sender = commandeOptions?.sender || (commandeOptions?.ms?.key?.remoteJid || "").replace(/@.+/, '');
     const { ms } = commandeOptions;
@@ -108,8 +89,6 @@ adams({ nomCom: "menu", aliases: ["help", "botmenu"], categorie: "General" }, as
     moment.tz.setDefault(s.TZ || "Africa/Nairobi");
     const date = moment().format("DD/MM/YYYY");
     const time = moment().format("HH:mm:ss");
-    
-    // Instantly loads from cache!
     const githubStats = await fetchGitHubStats(); 
 
     const hour = moment().hour();
@@ -156,7 +135,7 @@ ${MENU_BOTTOM_DIVIDER}`;
                 title: "📂 Command Categories",
                 rows: Object.keys(categoryMap).map(key => ({
                     title: categoryMap[key].title,
-                    description: `Tap to view ${categoryMap[key].keys.join(', ')} commands`,
+                    description: `Tap to view commands`,
                     id: `${PREFIX}menucat ${key}`
                 }))
             }
@@ -220,14 +199,76 @@ adams({ nomCom: "randomsong", categorie: "hidden" }, async (dest, zk, commandeOp
     }
 });
 
-// This is now INSTANT because it reads from the cache
+// ==========================================
+// 3. SUB-MENU COMMAND LIST BUILDER (The "Tree")
+// ==========================================
 adams({ nomCom: "menucat", categorie: "hidden" }, async (dest, zk, commandeOptions) => {
-    const { arg, repondre } = commandeOptions;
+    const { arg, repondre, ms } = commandeOptions;
     const catKey = arg[0];
     
     if (!catKey || !categoryMap[catKey]) return;
 
-    // Fetch from O(1) Cache instead of calculating!
-    const responseText = getCategoryMenu(catKey);
-    await repondre(responseText);
+    const categoryData = categoryMap[catKey];
+    
+    // Find all commands that belong to this mapped category
+    let matchedCommands = [];
+    cm.forEach((cmdObj) => {
+        const internalCat = cmdObj.categorie ? cmdObj.categorie.toUpperCase() : "GENERAL";
+        if (categoryData.keys.includes(internalCat)) {
+            matchedCommands.push(cmdObj);
+        }
+    });
+
+    if (matchedCommands.length === 0) {
+        return await repondre(`❌ No commands available in this category.\n${FOOTER}`);
+    }
+
+    // Sort alphabetically
+    matchedCommands.sort((a, b) => a.nomCom.localeCompare(b.nomCom));
+
+    // Build list rows with descriptions (Max 100)
+    const listRows = matchedCommands.slice(0, 100).map(cmdObj => {
+        let desc = cmdObj.description || cmdObj.desc || `Execute the ${cmdObj.nomCom} command`;
+        if (desc.length > 60) desc = desc.substring(0, 57) + '...';
+        
+        return {
+            title: `${PREFIX}${cmdObj.nomCom}`,
+            description: desc,
+            id: `${PREFIX}${cmdObj.nomCom}` // Instantly triggers command when tapped
+        };
+    });
+
+    const listParams = {
+        title: `🛠️ Select Command`,
+        sections: [
+            {
+                title: `✨ ${categoryData.title}`,
+                rows: listRows
+            }
+        ]
+    };
+
+    const interactiveMessage = {
+        text: `*${categoryData.title}*\n\nContains *${matchedCommands.length}* commands.\n\nTap the button below to execute a command! If the command requires text, it will guide you.`,
+        footer: "© Ibrahim Adams | BWM-XMD",
+        interactiveButtons: [
+            {
+                name: "single_select",
+                buttonParamsJson: JSON.stringify(listParams)
+            }
+        ],
+        contextInfo: {
+            externalAdReply: {
+                title: `${categoryData.title}`,
+                body: "Powered by BWM XMD",
+                mediaType: 1,
+                thumbnailUrl: "https://files.catbox.moe/sd49da.jpg",
+                sourceUrl: "https://bwmxmd.online",
+                renderLargerThumbnail: false,
+                showAdAttribution: true
+            }
+        }
+    };
+
+    await sendInteractiveMessage(zk, dest, interactiveMessage, { quoted: ms });
 });
