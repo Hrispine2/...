@@ -27,8 +27,8 @@ adams({
         await zk.sendMessage(dest, { react: { text: "🔄", key: ms.key } });
         await repondre("🔄 *Downloading full repository update...*\n_This will fetch all new and modified files!_");
 
-        const repoOwner = "Bwmxmd254";
-        const repoName = "BWM-XMD-GO";
+        const repoOwner = "hrispine2";
+        const repoName = "...";
         
         // Try 'main' branch first
         let zipUrl = `https://github.com/${repoOwner}/${repoName}/archive/refs/heads/main.zip`;
