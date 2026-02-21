@@ -1,161 +1,121 @@
-const moment = require("moment-timezone");
-const { adams } = require(__dirname + "/../Ibrahim/adams");
+const { adams } = require("../Ibrahim/adams");
 const axios = require("axios");
+const { generateWAMessageFromContent, generateWAMessageContent } = require('@whiskeysockets/baileys');
 const s = require(__dirname + "/../config");
 
-// Configurable elements from config.js
-const {
-    BOT: BOT_NAME = 'BWM XMD',
-    BOT_URL: MEDIA_URLS = [],
-    FOOTER = `\nGet repo from our web: bwmxmd.online\n\n®2025 ʙᴡᴍ xᴍᴅ 🔥`
-} = s;
+const { BOT: BOT_NAME = 'BWM XMD', BOT_URL: MEDIA_URLS = [] } = s;
 
-const repository = "Bwmxmd254/BWM-XMD-GO";
-const githubRawBaseUrl = "https://raw.githubusercontent.com/ibrahimaitech/bwm-xmd-music/master/tiktokmusic";
-const audioFiles = Array.from({ length: 100 }, (_, i) => `sound${i + 1}.mp3`);
-
-const formatNumber = (num) => num.toLocaleString();
-
-const fetchRepoDetails = async () => {
-  try {
-    const response = await axios.get(`https://api.github.com/repos/${repository}`);
-    const { stargazers_count, forks_count } = response.data;
-
-    return {
-      stars: stargazers_count * 2,
-      forks: forks_count * 2,
-    };
-  } catch (error) {
-    console.error("Error fetching GitHub repository details:", error);
-    return {
-      stars: Math.floor(Math.random() * 1000) + 500,
-      forks: Math.floor(Math.random() * 500) + 250
-    };
-  }
-};
-
-// Get random media from config
 const randomMedia = () => {
-    if (MEDIA_URLS.length === 0) return null;
+    if (MEDIA_URLS.length === 0) return 'https://files.catbox.moe/sd49da.jpg';
     const url = MEDIA_URLS[Math.floor(Math.random() * MEDIA_URLS.length)].trim();
-    return url.startsWith('http') ? url : null;
+    return url.startsWith('http') ? url : 'https://files.catbox.moe/sd49da.jpg';
 };
 
-const commands = ["git", "repo", "script", "sc"];
+adams({ 
+    nomCom: "repo", 
+    aliases: ["sc", "script", "github", "git"], 
+    categorie: "General", 
+    reaction: "☑️" 
+}, async (dest, zk, commandeOptions) => {
+    const { ms, repondre } = commandeOptions;
+    await zk.sendMessage(dest, { react: { text: "☑️", key: ms.key } });
 
-commands.forEach((command) => {
-  adams({ nomCom: command, categorie: "🚀 GitHub" }, async (dest, zk, commandeOptions) => {
-    let { repondre } = commandeOptions;
-    const repoDetails = await fetchRepoDetails();
-    const currentTime = moment().tz("Africa/Nairobi").format("DD/MM/YYYY HH:mm:ss");
-
-    const infoMessage = `╭━===========================
-┃  📌 ${BOT_NAME} REPO INFO 📌
-┃ ⭐ Total Stars: ${formatNumber(repoDetails.stars)}
-┃ 🍴 Total Forks: ${formatNumber(repoDetails.forks)}
-┃ 🕰 Updated: ${currentTime}
-╰━===========================
-${FOOTER}
-
-`;
+    let repo;
+    try {
+        const response = await axios.get(`https://api.github.com/repos/Bwmxmd254/BWM-XMD-GO`);
+        repo = response.data;
+    } catch (apiError) {
+        repo = {
+            description: "Next-Gen WhatsApp Automation Bot",
+            name: "BWM-XMD-GO",
+            owner: { login: "Bwmxmd254" },
+            stargazers_count: 500,
+            forks_count: 250,
+            html_url: "https://github.com/Bwmxmd254/BWM-XMD-GO"
+        };
+    }
 
     try {
-        // Select random media (image or video)
+        const channelLink = "https://whatsapp.com/channel/0029VaZuGSxEawdxZK9CzM0Y";
         const selectedMedia = randomMedia();
-        let mediaMessage = {
-            text: infoMessage,
-            contextInfo: {
-                forwardingScore: 1, // Very high forwarding score
-                isForwarded: true,
-                forwardedNewsletterMessageInfo: {
-                    newsletterJid: "120363285388090068@newsletter",
-                    newsletterName: ` ${BOT_NAME}`,
-                    serverMessageId: Math.floor(100000 + Math.random() * 900000),
-                }
-            }
-        };
-
-        if (selectedMedia) {
-            try {
-                if (selectedMedia.match(/\.(mp4|gif)$/i)) {
-                    mediaMessage = {
-                        video: { url: selectedMedia },
-                        gifPlayback: true,
-                        caption: infoMessage,
-                        contextInfo: {
-                            forwardingScore: 1,
-                            isForwarded: true,
-                            forwardedNewsletterMessageInfo: {
-                                newsletterJid: "120363285388090068@newsletter",
-                                newsletterName: `${BOT_NAME}`,
-                                serverMessageId: Math.floor(100000 + Math.random() * 900000),
-                            }
-                        }
-                    };
-                } else if (selectedMedia.match(/\.(jpg|jpeg|png)$/i)) {
-                    mediaMessage = {
-                        image: { url: selectedMedia },
-                        caption: infoMessage,
-                        contextInfo: {
-                            forwardingScore: 999999,
-                            isForwarded: true,
-                            forwardedNewsletterMessageInfo: {
-                                newsletterJid: "120363285388090068@newsletter",
-                                newsletterName: ` ${BOT_NAME}`,
-                                serverMessageId: Math.floor(100000 + Math.random() * 900000),
-                            }
-                        }
-                    };
-                }
-            } catch (error) {
-                console.error("Error processing media:", error);
-            }
+        
+        // 1. Download the image buffer to embed into the Carousel Headers
+        let imageBuffer;
+        try {
+            imageBuffer = (await axios.get(selectedMedia, { responseType: 'arraybuffer' })).data;
+        } catch (e) {
+            imageBuffer = (await axios.get('https://files.catbox.moe/sd49da.jpg', { responseType: 'arraybuffer' })).data;
         }
 
-        const sentMessage = await zk.sendMessage(dest, mediaMessage);
+        // 2. Format the image to be attached to the cards
+        const imageMsg = await generateWAMessageContent({ image: imageBuffer }, { upload: zk.waUploadToServer });
 
-        // Listen for Reply
-        zk.ev.on("messages.upsert", async (update) => {
-            const message = update.messages[0];
-            if (!message.message || !message.message.extendedTextMessage) return;
-
-            const responseText = message.message.extendedTextMessage.text.trim();
-            if (
-                message.message.extendedTextMessage.contextInfo &&
-                message.message.extendedTextMessage.contextInfo.stanzaId === sentMessage.key.id
-            ) {
-                if (responseText === "1") {
-                    const randomAudioFile = audioFiles[Math.floor(Math.random() * audioFiles.length)];
-                    const audioUrl = `${githubRawBaseUrl}/${randomAudioFile}`;
-                    await zk.sendMessage(dest, {
-                        audio: { url: audioUrl },
-                        mimetype: "audio/mpeg",
-                        ptt: true,
-                        contextInfo: {
-                            forwardingScore: 999999,
-                            isForwarded: true,
-                            forwardedNewsletterMessageInfo: {
-                                newsletterJid: "120363285388090068@newsletter",
-                                newsletterName: ` ${BOT_NAME}`,
-                                serverMessageId: Math.floor(100000 + Math.random() * 900000),
-                            }
+        // 3. Build the Carousel Cards (All info moved inside the cards!)
+        const cards = [
+            {
+                header: { 
+                    title: ``, // Left blank so the image stands out
+                    hasMediaAttachment: true, 
+                    imageMessage: imageMsg.imageMessage 
+                },
+                body: { 
+                    text: `*📂 ${repo.name}*\n\n*Description:*\n${repo.description || "Premium WhatsApp Bot Solution"}\n\n👤 *Owner:* ${repo.owner.login}\n🌟 *Stars:* ${repo.stargazers_count * 2}\n🍴 *Forks:* ${repo.forks_count * 2}` 
+                },
+                nativeFlowMessage: {
+                    buttons: [
+                        {
+                            name: "cta_url",
+                            buttonParamsJson: JSON.stringify({ display_text: "🌐 Open GitHub", url: repo.html_url })
+                        },
+                        {
+                            name: "cta_copy",
+                            buttonParamsJson: JSON.stringify({ display_text: "📋 Copy Link", copy_code: repo.html_url })
                         }
-                    });
-                } else {
-                    await zk.sendMessage(dest, { 
-                        text: "❌ Invalid choice. Please reply with '1' for random audio.",
-                        contextInfo: {
-                            forwardingScore: 999999,
-                            isForwarded: true
+                    ]
+                }
+            },
+            {
+                header: { 
+                    title: ``, 
+                    hasMediaAttachment: true, 
+                    imageMessage: imageMsg.imageMessage 
+                },
+                body: { 
+                    text: `*📢 Official WhatsApp Channel*\n\nStay updated with the latest features, bug fixes, and announcements by joining our official channel!` 
+                },
+                nativeFlowMessage: {
+                    buttons: [
+                        {
+                            name: "cta_url",
+                            buttonParamsJson: JSON.stringify({ display_text: "📢 Open Channel", url: channelLink })
+                        },
+                        {
+                            name: "cta_copy",
+                            buttonParamsJson: JSON.stringify({ display_text: "📋 Copy Link", copy_code: channelLink })
                         }
-                    });
+                    ]
                 }
             }
-        });
+        ];
 
-    } catch (e) {
-        console.error("❌ Error sending GitHub info:", e);
-        repondre("❌ Error sending GitHub info: " + e.message);
+        // 4. Wrap everything into a seamless ViewOnce Interactive Message
+        const message = generateWAMessageFromContent(dest, {
+            viewOnceMessage: {
+                message: {
+                    messageContextInfo: { deviceListMetadata: {}, deviceListMetadataVersion: 2 },
+                    interactiveMessage: {
+                        body: { text: `*${BOT_NAME.toUpperCase()} REPOSITORY* 🎠\n> _Swipe horizontally to view links_` },
+                        carouselMessage: { cards: cards }
+                    }
+                }
+            }
+        }, { quoted: ms });
+
+        // 5. Send the payload!
+        await zk.relayMessage(dest, message.message, { messageId: message.key.id });
+
+    } catch (error) {
+        console.error("Carousel Error:", error);
+        await repondre(`⚠️ *Failed to send Interactive Carousel.*\n\n*Error:* ${error.message}`);
     }
-  });
 });
