@@ -4,6 +4,7 @@ const fs = require("fs-extra");
 const path = require("path");
 const axios = require("axios");
 const AdmZip = require("adm-zip");
+const { hybridConfig } = require("../config"); // Imports the native restart logic
 
 // ==========================================
 // 1. ADVANCED FULL-REPO UPDATER
@@ -61,8 +62,6 @@ adams({
             for (const entry of zipEntries) {
                 if (entry.isDirectory) continue;
 
-                // entry.entryName looks like "BWM-XMD-GO-main/adams/EliteDev.js"
-                // We need to remove the root folder ("BWM-XMD-GO-main/")
                 const parts = entry.entryName.split('/');
                 parts.shift(); 
                 const targetPath = parts.join('/');
@@ -76,7 +75,6 @@ adams({
                 const fullPath = path.join(process.cwd(), targetPath);
                 const dirName = path.dirname(fullPath);
 
-                // Create folder if it doesn't exist (e.g. for new command folders)
                 if (!fs.existsSync(dirName)) {
                     fs.mkdirSync(dirName, { recursive: true });
                 }
@@ -89,12 +87,11 @@ adams({
             // Cleanup the temporary ZIP file
             fs.unlinkSync(zipPath);
             
-            await repondre(`✅ *Update successful!*\n\n📥 Successfully updated/added *${updatedFilesCount}* files.\n🔄 Restarting the bot to apply changes...`);
+            await repondre(`✅ *Update successful!*\n\n📥 Successfully updated/added *${updatedFilesCount}* files.\n🔄 Triggering system restart...`);
             
-            // Restart bot safely
-            setTimeout(() => {
-                process.exit(0);
-            }, 2000);
+            // 🔥 NATIVE RESTART LOGIC (Integrates perfectly with index.js WorkerManager)
+            await hybridConfig.restartBot();
+
         } else {
             await repondre(`❌ Failed to fetch update. Status: ${response.status}`);
         }
@@ -106,7 +103,32 @@ adams({
 });
 
 // ==========================================
-// 2. TERMINAL EXECUTOR (Runs bash commands)
+// 2. NATIVE RESTART COMMAND
+// ==========================================
+
+adams({ 
+    nomCom: "restart", 
+    aliases: ["reboot"], 
+    categorie: "Control", 
+    reaction: "🔄" 
+}, async (dest, zk, commandeOptions) => {
+    const { repondre, superUser, ms } = commandeOptions;
+
+    if (!superUser) return repondre('❌ *Owner Only Command!*');
+
+    await zk.sendMessage(dest, { react: { text: "🔄", key: ms.key } });
+    await repondre("🔄 *Initiating system restart...*\n_Please wait a moment._");
+
+    try {
+        // Triggers index.js restart protocol
+        await hybridConfig.restartBot();
+    } catch (err) {
+        repondre(`❌ *Restart failed:* ${err.message}`);
+    }
+});
+
+// ==========================================
+// 3. TERMINAL EXECUTOR (Runs bash commands)
 // ==========================================
 
 adams({ 
@@ -131,7 +153,7 @@ adams({
 });
 
 // ==========================================
-// 3. JAVASCRIPT EVALUATOR (Runs JS code)
+// 4. JAVASCRIPT EVALUATOR (Runs JS code)
 // ==========================================
 
 adams({ 
@@ -140,21 +162,19 @@ adams({
     categorie: "Control", 
     reaction: "⚙️" 
 }, async (dest, zk, commandeOptions) => {
-    const { repondre, arg, superUser, ms, msgRepondu } = commandeOptions;
+    const { repondre, arg, superUser } = commandeOptions;
     const code = arg.join(' ');
 
     if (!superUser) return repondre('❌ *Owner Only Command!*');
     if (!code) return repondre('⚙️ *Please provide code to evaluate.*\n*Example:* .> return 5 + 5');
 
     try {
-        // Evaluate the code asynchronously
         let evaled = await eval(`(async () => { ${code.includes('return') ? code : `return ${code}`} })()`);
         
         if (typeof evaled !== 'string') {
             evaled = require('util').inspect(evaled, { depth: 5 });
         }
 
-        // Prevent sending massive logs that crash WhatsApp
         if (evaled.length > 50000) {
             console.log(evaled);
             return repondre("✅ *Result too long! I have logged it to the console.*");
